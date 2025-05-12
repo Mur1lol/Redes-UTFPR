@@ -14,13 +14,10 @@ O trabalho foi criado com o intuito de entender, de forma prática, a lógica us
 
 Abaixo estão imagens ilustrando cada etapa do funcionamento do programa:
 
-1. **Iniciando o servidor:**
-   ![Iniciando o servidor](Files/start_server.png)
-2. **Iniciando o cliente:**
-   ![Iniciando o cliente](Files/start_client.png)
-3. **Cliente faz requisição:**
-   ![Requisição do cliente](Files/request_client.png)
-4. **Servidor responde:**
-   ![Resposta do servidor](Files/response_server.png)
-5. **Cliente recebe arquivo:**
-   ![Recebendo arquivo](Files/get_file.png)
+| **Etapa**                  | **Imagem**                                      |
+|----------------------------|-------------------------------------------------|
+| **Iniciando o servidor:**  | ![Iniciando o servidor](Files/start_server.png) |
+| **Iniciando o cliente:**   | ![Iniciando o cliente](Files/start_client.png)  |
+| **Cliente faz requisição:**| ![Requisição do cliente](Files/request_client.png) |
+| **Servidor responde:**     | ![Resposta do servidor](Files/response_server.png) |
+| **Cliente recebe arquivo:**| ![Recebendo arquivo](Files/get_file.png)        |
