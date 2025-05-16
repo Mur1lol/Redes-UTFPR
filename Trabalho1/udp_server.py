@@ -7,12 +7,12 @@ import os
 from colorama import Fore, Style 
 
 # Configurações do servidor
-TAM_BUFFER = 2048  
+TAM_BUFFER = 1024 
 PASTA_ARQUIVOS = "./Files"
 
 # Valores padrões
 SERVER_NAME = '127.0.0.1'  
-SERVER_PORT = 6000    
+SERVER_PORT = 5000    
 
 # Configuração do logger
 def configurar_logger():
@@ -34,12 +34,11 @@ def titulo():
     print("└────────────────────┘")
     print(Style.RESET_ALL)
 
-    
 # Função para solicitar a porta ao usuário
 def solicitar_porta():
     while True:
         try:
-            porta_escolhida = int(input("Digite a porta do servidor (padrão: 6000): ") or SERVER_PORT)
+            porta_escolhida = int(input(f"Digite a porta do servidor (padrão: {SERVER_PORT}): ") or SERVER_PORT)
             if 1024 <= porta_escolhida <= 65535:
                 iniciar_server = True
                 break
@@ -69,7 +68,7 @@ def envio_arquivo(retorno_socket: s.socket, nome_arquivo: str, endereco: tuple, 
         return
 
     if parte is None:
-        retorno_socket.sendto(f"OK {num_pacotes} {num_digitos+1+16+1+TAM_BUFFER}".encode(), endereco)
+        retorno_socket.sendto(f"OK {num_pacotes} {num_digitos+18+TAM_BUFFER}".encode(), endereco)
 
     with open(caminho_arquivo, "rb") as arquivo:
         for i in range(num_pacotes):
@@ -82,7 +81,18 @@ def envio_arquivo(retorno_socket: s.socket, nome_arquivo: str, endereco: tuple, 
                     # Cada segmento contém índice, hash MD5 e dados.
                     hash_ = h.md5(data).digest()
                     pacote = f"{i:{'0'}{num_digitos}}".encode() + b" " + hash_ + b" " + data
+                    print(f"Enviando pacote {i}/{num_pacotes} para {endereco}")
+                    t.sleep(0.01) 
                     retorno_socket.sendto(pacote, endereco)
+
+                    # Aguarda ACK do cliente
+                    try:
+                        retorno_socket.settimeout(0.1)
+                        ack, _ = retorno_socket.recvfrom(1024)
+                        if ack != f"ACK {i}".encode():
+                            print(f"ACK inválido para pacote {i}")
+                    except s.timeout:
+                        print(f"Timeout esperando ACK do pacote {i}")
 
                     if parte is not None:
                         break 
@@ -90,28 +100,30 @@ def envio_arquivo(retorno_socket: s.socket, nome_arquivo: str, endereco: tuple, 
                 print(f"Erro ao enviar o pacote {i}: {e}")
 
     if parte is None:
-        # Fim da transmissão.
-        t.sleep(1)
+        t.sleep(0.1)
+        print(f"Enviando pacote {i+1}/{num_pacotes} para {endereco}")
+
         retorno_socket.sendto(b"END", endereco)
 
-# Função para processar requisições de arquivos
+
 def requisicao_arquivo(message_: bytes, addr_: tuple, logger):
-    
-    # Aguarda conexões/mensagens de clientes
     request = message_.decode().split()
+    
+    #evitar concorrencia de threads
+    th.Lock().acquire()
 
     # Cria um socket adicional com uma porta dinâmica
     retorno_socket = s.socket(s.AF_INET, s.SOCK_DGRAM)
-    retorno_socket.bind((SERVER_NAME, 0))  # Porta 0 permite ao sistema escolher uma porta disponível
-    porta_aleatoria = retorno_socket.getsockname()[1]  # Obtém a porta atribuída pelo sistema
+    retorno_socket.bind((SERVER_NAME, 0))  
+    porta_aleatoria = retorno_socket.getsockname()[1] 
 
     logger.info(f"Requisição: '{message_.decode()}', socket criado na porta: {porta_aleatoria}")
     print(f"Requisição: '{message_.decode()}', socket criado na porta: {addr_}")
 
     if len(request) <= 1:
         # Envia mensagem de erro para requisição inválida
-        print(Fore.RED + "[ERRO] Requisição ruim" + Style.RESET_ALL)
-        retorno_socket.sendto("[ERRO] Requisição ruim".encode(), addr_)
+        print(Fore.RED + "[ERRO] Requisição inválida" + Style.RESET_ALL)
+        retorno_socket.sendto("[ERRO] Requisição inválida".encode(), addr_)
         return
 
     if request[0] != "GET":

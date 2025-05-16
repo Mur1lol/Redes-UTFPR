@@ -6,12 +6,12 @@ import random
 from colorama import Fore, Style 
 
 # Configurações do cliente
-TAM_BUFFER = 2048  
+TAM_BUFFER = 1024  
 
 # Valores padrões
 SERVER_NAME = "127.0.0.1"
-SERVER_PORT = 6000
-REQUISICAO = "GET TeamMaker.png"
+SERVER_PORT = 5000
+REQUISICAO = "GET gato.gif"
 PROBABILIDADE = 50
 
 # Função para exibir o título do cliente
@@ -29,27 +29,13 @@ def configurar_socket():
     cliente_socket.settimeout(60)  # Define o timeout para evitar bloqueios.
     return cliente_socket
 
-# Função para limpar o buffer do socket
-def limpa_buffer(cliente_socket, tam_buffer_server):
-
-    original_timeout = cliente_socket.gettimeout()
-    
-    cliente_socket.settimeout(0.1)
-    try:
-        while True:
-            cliente_socket.recvfrom(tam_buffer_server)
-    except s.timeout:
-        pass 
-    finally:
-        cliente_socket.settimeout(original_timeout)
-
 # Função para solicitar o nome e a porta do servidor ao usuário
 def solicitar_configuracao_servidor():
     titulo()
-    nome_servidor = input("Digite o endereço do servidor (padrão: 127.0.0.1): ") or SERVER_NAME
+    nome_servidor = input(f"Digite o endereço do servidor (padrão: {SERVER_NAME}): ") or SERVER_NAME
     while True:
         try:
-            porta_servidor = int(input("Digite a porta do servidor (padrão: 6000): ") or SERVER_PORT)
+            porta_servidor = int(input(f"Digite a porta do servidor (padrão: {SERVER_PORT}): ") or SERVER_PORT)
             if 1024 <= porta_servidor <= 65535:
                 break
             else:
@@ -62,10 +48,10 @@ def solicitar_configuracao_servidor():
 def solicitar_requisicao():
     while True:
         try:
-            requisicao = input("Faça uma requisição (Ex: GET arquivo.ext): ") or REQUISICAO
+            requisicao = input(f"Faça uma requisição (Ex: {REQUISICAO}): ") or REQUISICAO
             if requisicao.split(" ")[1]:
                 nome_arquivo = requisicao.split(" ")[1]
-                if nome_arquivo.split(".")[-1] in ["png", "jpg", "jpeg", "gif", "txt", "pdf"]:
+                if nome_arquivo.split(".")[-1] in ["png", "jpg", "jpeg", "gif", "txt", "pdf", "dat", "mp3", "mp4", "mkv", "avi"]:
                     break
                 else:
                     print("Formato de arquivo inválido. Tente novamente.")
@@ -80,15 +66,13 @@ def solicitar_requisicao():
 def probabilidade_descartar_pacotes():
     while True:
         try:
-            valor = int(input("Qual a probabilidade de perder um pacote? (0-100): ") or PROBABILIDADE)
+            valor = int(input(f"Qual a probabilidade de perder um pacote? (0-100, padrão: {PROBABILIDADE}%): ") or PROBABILIDADE)
             if 0 <= valor <= 100:
                 break
             else:
                 print("Valor inválido. Insira um valor entre 0 e 100.")
         except ValueError:
             print("Por favor, insira um número válido.")
-            
-    
     return valor
 
 # Função para processar a resposta do servidor
@@ -119,22 +103,28 @@ def receber_arquivo(cliente_socket, nome_arquivo, num_pacotes, tam_buffer_server
     buffer = [None for _ in range(num_pacotes)] 
 
     # Recebe os pacotes do arquivo
-    for i in range(num_pacotes):
+    for i in range(num_pacotes+1):
+        titulo()
+        print(f"Recebendo pacote {i}/{num_pacotes}...")
         message, addr = cliente_socket.recvfrom(tam_buffer_server)
-
+        
+        #barra de progresso
+        barra = int((i / num_pacotes) * 50)
+        print(f"[{'█' * barra}{' ' * (50 - barra)}] ({(i / num_pacotes) * 100:.2f}%)", end="\r")
+        
         if message[0:3] == b"END":
             break
 
         # Simula a perda de pacotes com base na probabilidade
         if random.randint(1, 100) <= probabilidade_perda:
-            continue  
+            continue   
 
         # Processa o pacote recebido
         try:
             header = int(message[:len(str(num_pacotes))].decode())
             buffer[header] = message
-        except (ValueError, IndexError):
-            # Se ocorrer um erro ao processar o pacote, registra o erro e continua
+            cliente_socket.sendto(f"ACK {header}".encode(), addr)
+        except (ValueError, IndexError, TimeoutError, s.timeout):
             print(f"Erro ao processar o pacote {i}.")
 
     reconstruir_arquivo(buffer, nome_arquivo, num_pacotes, cliente_socket, tam_buffer_server, nome_servidor, porta_servidor)
@@ -158,31 +148,33 @@ def reconstruir_arquivo(buffer, nome_arquivo, num_pacotes, cliente_socket, tam_b
 
     # Identificar pacotes perdidos
     pacotes_perdidos = [index for index, segment in enumerate(vet_arquivo) if segment is None]
+    
+    pacotes_recuperados = 0
+    pacotes_recebidos = 0
 
     if pacotes_perdidos:
         print(Fore.RED + f"Pacotes perdidos: {pacotes_perdidos}" + Style.RESET_ALL)
         recuperar = input("Deseja recuperar os pacotes perdidos? [S/N]: ").strip().lower()
         
         titulo()
-        if recuperar == 's':
-            limpa_buffer(cliente_socket, tam_buffer_server)
-            
+        if recuperar == 's':            
             for index in pacotes_perdidos:
                 data = b""
                 hash_ = b""
                 contador = 0
                 while h.md5(data).digest() != hash_:
-                    print(f"Recuperando pacote perdido ({index})...")
                     cliente_socket.sendto(f"GET {nome_arquivo}/{index}".encode(), (nome_servidor, porta_servidor))
                     message, addr = cliente_socket.recvfrom(tam_buffer_server)
-
-                    # Corrigir a extração do hash e dos dados do pacote recebido
+                    
+                    header = int(message[:num_digitos].decode())
                     hash_ = message[hash_inicial:hash_final]
                     data = message[hash_final + 1:]
+                    
+                    cliente_socket.sendto(f"ACK {header}".encode(), addr)
 
                     if h.md5(data).digest() == hash_:
-                        print(f"Pacote {index} recuperado com sucesso!\n")
                         vet_arquivo[index] = data
+                        pacotes_recuperados += 1
                         break
                     else:
                         contador += 1
@@ -190,7 +182,8 @@ def reconstruir_arquivo(buffer, nome_arquivo, num_pacotes, cliente_socket, tam_b
                             print(f"Falha ao recuperar o pacote {index} após várias tentativas.\n")
                             break
                         print(f"Pacote {index} inválido, tentando novamente...\n")
-                
+        print(Fore.GREEN + f"Pacotes recuperados: {pacotes_recuperados}/{len(pacotes_perdidos)}" + Style.RESET_ALL)    
+        
     # Criar pasta Received_Files
     if not os.path.exists("Received_Files"):
         os.makedirs("Received_Files")
@@ -201,11 +194,13 @@ def reconstruir_arquivo(buffer, nome_arquivo, num_pacotes, cliente_socket, tam_b
     with open(caminho_arquivo, "wb") as arquivo:
         for index in range(num_pacotes):
             if vet_arquivo[index] is None:
-                print(f"Pacote {index} não recebido.")
                 continue
+            pacotes_recebidos += 1
             arquivo.write(vet_arquivo[index])
             
+    print(Fore.GREEN + f"Pacotes recebidos: {pacotes_recebidos}/{num_pacotes}\n" + Style.RESET_ALL)
     print(Fore.GREEN + f"Arquivo {nome_arquivo} reconstruído com sucesso!\n" + Style.RESET_ALL)
+    
 
 def main():
     cliente_socket = configurar_socket()
@@ -228,6 +223,5 @@ def main():
     finally:
         cliente_socket.close()
         
-# Executa o cliente
 if __name__ == "__main__":
     main()
