@@ -8,7 +8,7 @@ from colorama import Fore, Style
 
 # Configurações do servidor
 TAM_BUFFER = 1024 
-PASTA_ARQUIVOS = "./Files"
+PASTA_ARQUIVOS = "../Files"
 
 # Valores padrões
 SERVER_NAME = '127.0.0.1'  
